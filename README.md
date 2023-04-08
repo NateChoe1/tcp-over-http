@@ -4,16 +4,34 @@ This is TCP over HTTP
 
 ## Why?
 
-My school restricts internet access quite a bit. HTTPS websites are restricted
-by default, but the people who run the filtering spent all of their time
-worrying about HTTPS and forgot to disable HTTP. Those idiots did not expect
-some bigger, smarter idiot to implement TCP over HTTP.
+My school filters the internet quite a bit, but they're weird about it.
+
+* HTTPS is completely filtered. The network has a custom signing authority that
+allows them to view and filter any TLS data they see.
+* Many other ports are completely banned, most notably port 22 (SSH).
+* The school can detect if you're using a VPN, and will disable your WiFi for 5
+minutes if you do. Tor does work with bridges, although it's quite slow and
+probably not very good for the network.
+* The school will also block protocols, not just ports, so moving SSH to some
+other port won't work.
+* Despite this, however, many protocols remain unblocked. Most notably, VNC,
+which would allow you to connect directly to a home desktop as long as you're
+fine with the school district being able to see your screen and monitor your
+keystrokes at all times.
+* In addition, many other ports are completely unfiltered. Port 25 (can be used
+for email spam) is allowed, as is port 70 (Gopher), port 1965 (Gemini), and most
+importantly, port 80 (HTTP).
+
+This means that if we can encode a VPN into one of these unblocked protocols, we
+can bypass all the filters with a fast internet connection. This repo obviously
+encodes TCP into HTTP.
 
 ## How does it work?
 
-Because the semantics of HTTP aren't really important, this is not a stateless
-protocol. Instead, the client opens two socket connections to the server. One
-sends packets, the other receives them.
+We're not really trying to write a decent web server that follows all of the
+HTTP paradigms, we're trying to encode data. That's why this program sends two
+requests simultaneously and nothing else. One request sends data, the other
+receives.
 
 The sending socket sends a POST request that looks like this:
 
@@ -31,25 +49,24 @@ The server responds to that request with this response:
     HTTP/1.1 200 OK
     Content-Length: 9223372036854775807
 
-Now we effectively have a socket connection. We can send data on one socket and
-receive from another. We then need to make sure that the two connections were
-sent correctly, so the client sends a random 4 byte sequence and the server
-returns that same sequence back. If the sequences are different, then
-something's gone wrong and the client stops the connections.
+Now, the client can send data through the POST request and the server can send
+data back through the GET request. We've created a TCP connection with the
+server that can send any data including SSH connections.
 
-The client program now generates a two way pipe between some process and the
-server. If this other process is netcat, then you can connect to netcat with
-some third process like SSH.
+Of course, having a TCP connection is useless if it's confined to code that you
+write, we have to be able to forward this data to other programs. Sending data
+from the server side to somewhere else is pretty straightforward, you just
+specify a host and a port, and you can relay data between two hosts.
 
-## How can I use this
+The client side is a bit harder. The solution I came up with was to create
+another server on the client side that some other program like ssh can connect
+to. ssh connects to a server on the client machine, which forwards that data via
+HTTP to the other server, which forwards that data again to sshd.
 
-This is quite useless unless you have some other program to run it with. You can
-create a double pipe between the client program and netcat listening on some
-port, and then connect another third program to that port. The third program
-sends data to netcat, which sends it to this program, which sends it to the
-server, which forwards that data to some other place, which responds with some
-data, which the server forwards to the client, which the client forwards to
-netcat, which forwards it to the other program.
+My Dad (quite reasonably) got confused after hearing me explain this, so here's
+a diagram I made.
+
+![Diagram explaining this cursed configuration](https://raw.githubusercontent.com/NateChoe1/tcp-over-http/master/diagram.png)
 
 ## How do I configure this
 
