@@ -112,10 +112,6 @@ static int create_proxy(char *ip_text, int *send_ret, int *recv_ret) {
 		perror("Failed to generate random checksum");
 		return 1;
 	}
-	if (write(send_fd, random_buff, 4) < 4) {
-		perror("Failed to send random checksum");
-		return 1;
-	}
 
 	if (dputsc(send_fd, "POST / HTTP/1.1\r\n"
 			    "Host: " CONFIG_HOST "\r\n"
