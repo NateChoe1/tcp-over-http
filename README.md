@@ -36,13 +36,13 @@ receives.
 The sending socket sends a POST request that looks like this:
 
     POST / HTTP/1.1
-    Host: [CONFIG_HOST]
+    Host: [CONFIG_HTTP_HOST]
     Content-Length: 9223372036854775807
 
 and the receiving socket sends a GET request that looks like this:
 
     GET / HTTP/1.1
-    Host: [CONFIG_HOST]
+    Host: [CONFIG_HTTP_HOST]
 
 The server responds to that request with this response:
 
@@ -53,15 +53,8 @@ Now, the client can send data through the POST request and the server can send
 data back through the GET request. We've created a TCP connection with the
 server that can send any data including SSH connections.
 
-Of course, having a TCP connection is useless if it's confined to code that you
-write, we have to be able to forward this data to other programs. Sending data
-from the server side to somewhere else is pretty straightforward, you just
-specify a host and a port, and you can relay data between two hosts.
-
-The client side is a bit harder. The solution I came up with was to create
-another server on the client side that some other program like ssh can connect
-to. ssh connects to a server on the client machine, which forwards that data via
-HTTP to the other server, which forwards that data again to sshd.
+We can then use port forwarding to allow a program on the client to communicate
+with a program on the server.
 
 My Dad (quite reasonably) got confused after hearing me explain this, so here's
 a diagram I made.

@@ -19,12 +19,9 @@ static int dputsc(int fd, char *str, char check[4]);
 
 static int random_fd;
 
-static int start_double_pipe(int argc, char **argv, int *recv, int *send);
-
 int main(int argc, char **argv) {
 	char ip_text[30];
 	int send_fd, recv_fd;
-	int source_fd, out_fd;
 	struct pollfd fds[2];
 
 	random_fd = open("/dev/urandom", O_RDONLY);
@@ -33,52 +30,18 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	if (create_proxy(CONFIG_HOST_IP, &send_fd, &recv_fd)) {
+	if (create_proxy(CONFIG_SERVER_HOST, &send_fd, &recv_fd)) {
 		fputs("Failed to create proxy\n", stderr);
 		return 1;
 	}
 
-	if (start_double_pipe(argc - 1, argv + 1, &source_fd, &out_fd)) {
-		fputs("Failed to start double pipe\n", stderr);
-		return 1;
-	}
+	dup2(send_fd, 1);
+	dup2(recv_fd, 0);
 
-	fds[0].fd = source_fd;
-	fds[0].events = POLLIN;
-	fds[1].fd = recv_fd;
-	fds[1].events = POLLIN;
-
-	for (;;) {
-		poll(fds, 2, -1);
-		if (fds[0].revents & POLLIN) {
-			char buff[1024];
-			ssize_t read_len;
-			read_len = read(source_fd, buff, sizeof buff);
-			if (read_len < 0) {
-				perror("Warning: Failed to read from source");
-				goto after_source;
-			}
-			if (write_resilient(send_fd, buff, read_len)) {
-				fputs("Warning: Failed to send data\n",
-						stderr);
-			}
-		}
-after_source:
-		if (fds[1].revents & POLLIN) {
-			char buff[1024];
-			ssize_t read_len;
-			read_len = read(recv_fd, buff, sizeof buff);
-			if (read_len < 0) {
-				perror("Warning: Failed to recv from server");
-				goto after_recv;
-			}
-			if (write_resilient(out_fd, buff, read_len)) {
-				fputs("Warning: Failed to output data\n",
-						stderr);
-			}
-		}
-after_recv:
-	}
+	execlp(CONFIG_CLIENT_NC, CONFIG_CLIENT_NC, "-l", "-p",
+			STR(CONFIG_CLIENT_PORT), NULL);
+	perror("exec() failed");
+	exit(EXIT_FAILURE);
 }
 
 static int create_proxy(char *ip_text, int *send_ret, int *recv_ret) {
@@ -90,7 +53,7 @@ static int create_proxy(char *ip_text, int *send_ret, int *recv_ret) {
 		puts("Invalid address");
 		return 0;
 	}
-	addr.sin_port = htons(CONFIG_PORT);
+	addr.sin_port = htons(CONFIG_SERVER_PORT);
 
 	send_fd = socket(PF_INET, SOCK_STREAM, 0);
 	recv_fd = socket(PF_INET, SOCK_STREAM, 0);
@@ -114,14 +77,14 @@ static int create_proxy(char *ip_text, int *send_ret, int *recv_ret) {
 	}
 
 	if (dputsc(send_fd, "POST / HTTP/1.1\r\n"
-			    "Host: " CONFIG_HOST "\r\n"
+			    "Host: " CONFIG_HTTP_HOST "\r\n"
 			    "Content-Length: 9223372036854775807\r\n"
 			    "\r\n", random_buff)) {
 		fputs("Failed to send HTTP header\n", stderr);
 		return 1;
 	}
 	if (dputs(recv_fd, "GET / HTTP/1.1\r\n"
-			   "Host: " CONFIG_HOST "\r\n"
+			   "Host: " CONFIG_HTTP_HOST "\r\n"
 			   "\r\n")) {
 		fputs("Failed to send HTTP header\n", stderr);
 		return 1;
@@ -164,54 +127,4 @@ static int dputsc(int fd, char *str, char check[4]) {
 	ret = write_resilient(fd, buff, len + 4);
 	free(buff);
 	return ret;
-}
-
-static int start_double_pipe(int argc, char **argv, int *recv, int *send) {
-	int pipe1[2], pipe2[2];
-	pid_t pid;
-
-	if (argc < 1) {
-		fputs("Usage: client [double pipe command]\n", stderr);
-		goto error1;
-	}
-
-	if (pipe(pipe1) == -1) {
-		perror("Failed to create pipe");
-		goto error1;
-	}
-	if (pipe(pipe2) == -1) {
-		perror("Failed to create pipe");
-		goto error2;
-	}
-
-	pid = fork();
-	if (pid == -1) {
-		perror("Failed to fork other process");
-		goto error3;
-	}
-	if (pid == 0) {
-		dup2(pipe1[1], 1);
-		close(pipe1[0]);
-		dup2(pipe2[0], 0);
-		close(pipe2[1]);
-		execvp(argv[0], argv);
-		perror("exec() failed");
-		exit(EXIT_FAILURE);
-	}
-
-	*recv = pipe1[0];
-	close(pipe1[1]);
-	*send = pipe2[1];
-	close(pipe2[0]);
-
-	return 0;
-
-error3:
-	close(pipe2[0]);
-	close(pipe2[1]);
-error2:
-	close(pipe1[0]);
-	close(pipe1[1]);
-error1:
-	return 1;
 }
