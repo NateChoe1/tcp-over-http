@@ -91,11 +91,6 @@ Here's a diagram explaining how this works:
       |            | <-500 body--- |            |
        ------------                 ------------
 
-![Diagram explaining this configuration](https://raw.githubusercontent.com/NateChoe1/tcp-over-http/master/diagram.png)
-
-Note that the "HTTP GET request" at the bottom of the diagram ought to say "500
-Interal Server Error response", I just don't feel like changing it right now.
-
 ## How do I configure this
 
 Change `config.h`. I blame [suckless](https://suckless.org) for this.
