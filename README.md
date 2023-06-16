@@ -63,7 +63,33 @@ Note that after this interaction, the client is both sending and receiving a
 message body. Any new data sent over this TCP stream can be interpreted as
 perfectly valid HTTP.
 
-Here's an outdated diagram explaining how this works:
+Here's a diagram explaining how this works:
+
+       ------------                 ------------
+      |            |               |            |
+      | SSH Client |               | SSH Daemon |
+      |            |               |            |
+       ------------                 ------------
+            ^                            ^
+            |                            |
+           TCP                          TCP
+            |                            |
+            v                            v
+       ------------                 ------------
+      |            |               |            |
+      |   netcat   |               |   netcat   |
+      |            |               |            |
+       ------------                 ------------
+            ^                            ^
+            |                            |
+    Double ended pipe            Double ended pipe
+            |                            |
+            v                            v
+       ------------                 ------------
+      |            | --POST body-> |            |
+      |   Client   |               |   Server   |
+      |            | <-500 body--- |            |
+       ------------                 ------------
 
 ![Diagram explaining this configuration](https://raw.githubusercontent.com/NateChoe1/tcp-over-http/master/diagram.png)
 
