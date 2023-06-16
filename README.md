@@ -28,38 +28,47 @@ encodes TCP into HTTP.
 
 ## How does it work?
 
-We're not really trying to write a decent web server that follows all of the
-HTTP paradigms, we're trying to encode data. That's why this program sends two
-requests simultaneously and nothing else. One request sends data, the other
-receives.
+From RFC 9110:
 
-The sending socket sends a POST request that looks like this:
+> All responses, regardless of the status code (including interim responses) can
+> be sent at any time after a request is received, even if the request is not
+> yet complete.  A response can complete before its corresponding request is
+> complete (Section 6.1).  Likewise, clients are not expected to wait any
+> specific amount of time for a response.  Clients (including intermediaries)
+> might abandon a request if the response is not received within a reasonable
+> period of time.
 
-    POST / HTTP/1.1
-    Host: [CONFIG_HTTP_HOST]
-    Content-Length: 9223372036854775807
+This means HTTP servers can send a response before the client even finishes
+sending the request, so this interaction is perfectly valid:
 
-and the receiving socket sends a GET request that looks like this:
+    > GET / HTTP/1.1
+    < HTTP/1.1 500 Internal Server Error
+    < Content-Length: 13
+    < 
+    < We screwed up
+    > Host: example.com
+    > 
 
-    GET / HTTP/1.1
-    Host: [CONFIG_HTTP_HOST]
+As is this one:
 
-The server responds to that request with this response:
+    > POST / HTTP/1.1
+    > Host: example.com
+    > Content-Length: 9223372036854775807
+    >
+    < HTTP/1.1 500 Internal Server Error
+    < Content-Length: 9223372036854775807
+    <
 
-    HTTP/1.1 200 OK
-    Content-Length: 9223372036854775807
+Note that after this interaction, the client is both sending and receiving a
+message body. Any new data sent over this TCP stream can be interpreted as
+perfectly valid HTTP.
 
-Now, the client can send data through the POST request and the server can send
-data back through the GET request. We've created a TCP connection with the
-server that can send any data including SSH connections.
+Here's an outdated diagram explaining how this works:
 
-We can then use port forwarding to allow a program on the client to communicate
-with a program on the server.
+![Diagram explaining this configuration](https://raw.githubusercontent.com/NateChoe1/tcp-over-http/master/diagram.png)
 
-My Dad (quite reasonably) got confused after hearing me explain this, so here's
-a diagram I made.
-
-![Diagram explaining this cursed configuration](https://raw.githubusercontent.com/NateChoe1/tcp-over-http/master/diagram.png)
+Note that the "HTTP GET request" at the bottom of the diagram ought to say "500
+Interal Server Error response", I just don't feel like changing it right now.
 
 ## How do I configure this
 

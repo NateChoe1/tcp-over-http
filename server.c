@@ -11,7 +11,7 @@
 #include "config.h"
 #include "common.h"
 
-static void start_conn(int send_fd, int recv_fd);
+static void start_conn(int fd);
 static void sigchld_action(int signum);
 
 int main() {
@@ -52,54 +52,46 @@ int main() {
 	for (;;) {
 		struct sockaddr_in addr_buff;
 		socklen_t len_buff;
-		int send_fd, recv_fd;
+		int client_fd;
 
-		recv_fd = accept(sockfd, (struct sockaddr *) &addr_buff,
-				&len_buff);
-		/* Make sure the second connection comes within 1000 ms. */
-		poll(&pollfd, 1, 1000);
-		if (!(pollfd.revents & POLLIN)) {
-			close(recv_fd);
-			continue;
-		}
-		send_fd = accept(sockfd, (struct sockaddr *) &addr_buff,
+		client_fd = accept(sockfd, (struct sockaddr *) &addr_buff,
 				&len_buff);
 
-		start_conn(send_fd, recv_fd);
+		start_conn(client_fd);
+		close(client_fd);
 	}
 
 	return 0;
 }
 
-static void start_conn(int send_fd, int recv_fd) {
+static void start_conn(int fd) {
 	pid_t pid;
 	char buff[1000];
-	ssize_t len;
 
-	len = read(recv_fd, buff, sizeof buff);
-	if (len < 0) {
+	/* Swallow header */
+	if (read(fd, buff, sizeof buff) < 0) {
 		perror("Failed to start connection");
 		return;
 	}
-	if (write(send_fd, buff + len - 4, 4) < 4) {
-		perror("Failed to send checksum");
+	if (dputs(fd, "HTTP/1.1 500 Internal Server Error\r\n"
+		      "Content-Length: 9223372036854775807\r\n"
+		      "\r\n")) {
+		fputs("Failed to send response header\n", stderr);
 		return;
 	}
+
 
 	pid = fork();
 	if (pid == -1) {
 		return;
 	}
 	if (pid == 0) {
-		dup2(send_fd, 1);
-		dup2(recv_fd, 0);
+		dup2(fd, 1);
+		dup2(fd, 0);
 		execlp(CONFIG_SERVER_NC, CONFIG_SERVER_NC, "--",
 				CONFIG_DEST_HOST, STR(CONFIG_DEST_PORT), NULL);
 		exit(EXIT_FAILURE);
 	}
-
-	close(send_fd);
-	close(recv_fd);
 }
 
 static void sigchld_action(int signum) {
