@@ -13,23 +13,75 @@
 #include "common.h"
 
 static int create_proxy(char *ip_text, int *fd_ret);
+static int copy(int src, int dst);
 
 int main(int argc, char **argv) {
 	char ip_text[30];
-	int fd;
+	int serverfd;
+	struct sockaddr_in addr;
 
-	if (create_proxy(CONFIG_SERVER_HOST, &fd)) {
-		fputs("Failed to create proxy\n", stderr);
+	if ((serverfd = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
+		perror("Failed to create socket");
+		return 1;
+	}
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(CONFIG_CLIENT_PORT);
+	addr.sin_addr.s_addr = INADDR_ANY;
+	if (bind(serverfd, (struct sockaddr *) &addr, sizeof addr) < 0) {
+		perror("Failed to bind socket");
+	}
+	if (listen(serverfd, 5) == -1) {
+		perror("Failed to listen on socket");
 		return 1;
 	}
 
-	dup2(fd, 0);
-	dup2(fd, 1);
+	for (;;) {
+		int clientfd;
+		struct sockaddr_in addr_buff;
+		socklen_t len_buff;
+		pid_t pid;
+		int forwardfd;
+		clientfd = accept(serverfd,
+				(struct sockaddr *) &addr_buff, &len_buff);
+		if (clientfd < 0) {
+			perror("Failed to accept connection");
+			continue;
+		}
 
-	execlp(CONFIG_CLIENT_NC, CONFIG_CLIENT_NC, "-l", "-p",
-			STR(CONFIG_CLIENT_PORT), NULL);
-	perror("exec() failed");
-	exit(EXIT_FAILURE);
+		pid = fork();
+		switch (pid) {
+		case -1:
+			perror("Failed to fork");
+			close(clientfd);
+			break;
+		case 0:
+			if (create_proxy(CONFIG_SERVER_HOST, &forwardfd)) {
+				fputs("Failed to create proxy\n", stderr);
+				return 1;
+			}
+			pid = fork();
+			switch (pid) {
+			case -1:
+				perror("Failed to fork proxies");
+				return 1;
+			case 0:
+				dup2(clientfd, 0);
+				dup2(forwardfd, 1);
+				execlp("cat", "cat", NULL);
+				return 1;
+			default:
+				dup2(forwardfd, 0);
+				dup2(clientfd, 1);
+				execlp("cat", "cat", NULL);
+				return 1;
+			}
+			break;
+		default:
+			close(clientfd);
+			break;
+		}
+	}
+	return 1;
 }
 
 static int create_proxy(char *ip_text, int *fd_ret) {
